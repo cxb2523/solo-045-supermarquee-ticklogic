@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Most simple example using uncompiled module code</title>
+    <style>
+        a, a:visited, a:hover {
+            color: red;
+        }
+        .my-custom-class {
+            background-color: red;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="#">TEST</a>
+    <div id="sm" style="max-width: 30%; width: 30%;"></div>
+
+    <script type="module">
+        import { default as SuperMarquee } from "./../src/core/SuperMarquee.js";
+
+        window.onload = function()
+        {
+            const smInstance = new SuperMarquee(
+                document.getElementById( 'sm' ),
+                {
+                    "content" : "Read the latest headlines from our blog.",
+                    "mode" : "pingpong",
+                    "cssClass" : "my-custom-class",
+                    "fader": "{\"left\":{\"size\":\"21\",\"colorFrom\":\"rgba( 255, 255, 255, 1 )\",\"colorTo\":\"rgba( 255, 255, 255, 0 )\"},\"right\":{\"size\":\"41\",\"colorFrom\":\"rgba( 255, 255, 255, 1 )\",\"colorTo\":\"rgba( 255, 255, 255, 0 )\"},\"top\":{\"size\":\"0\",\"colorFrom\":\"rgba( 255, 255, 255, 1 )\",\"colorTo\":\"rgba( 255, 255, 255, 0 )\"},\"bottom\":{\"size\":\"0\",\"colorTo\":\"rgba( 255, 255, 255, 1 )\",\"colorFrom\":\"rgba( 255, 255, 255, 0 )\"}}"
+                }
+            );
+        };
+    </script>
+</body>
+</html>
