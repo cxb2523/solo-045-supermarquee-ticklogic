@@ -656,222 +656,252 @@
 	    elem.dispatchEvent( new Event( "resume" ) );
 	};
 
+	/**
+	 * Pure per-frame scroll logic.
+	 *
+	 * Each function receives an immutable state snapshot and a time slice (dt in ms)
+	 * and returns the next state together with the transform to apply to the inner
+	 * container. The functions never read instance fields and never touch the DOM.
+	 *
+	 * State snapshot shape:
+	 * {
+	 *     xPos, yPos,                     // current scroll offsets
+	 *     speed,                          // resolved speed for this tick (easing already applied)
+	 *     pingPongCurrentDirection,       // +1 / -1 / 0 (0 = pausing at a boundary)
+	 *     pingPongNextDirection,          // direction to continue in after the pause
+	 *     pingPongPauseDelay,             // remaining pause time in ms
+	 *     pingPongDelay,                  // configured pause time in ms
+	 *     visibleWidth, visibleHeight,    // container dimensions
+	 *     totalScrollItemWidth, totalScrollItemHeight
+	 * }
+	 *
+	 * Return value: { state, transform }
+	 * `transform` is null when no style update is required.
+	 */
 	const TickLogic = {
 
-	    fnNoScroll : function( dt )
+	    fnNoScroll : function( state, dt )
 	    {
 	        // Nothing to do
+	        return { state : Object.assign( {}, state ), transform : null };
 	    },
 
-	    /*
-	    // Gets set during ticker initialisation
-	    _pingPongCurrentDirection : null,
-	    _pingPongNextDirection : null,
-	    _pingPongPauseDelay : null,
-	*/
-	    fnHorizontalLtrPingPong : function( dt )
+	    fnHorizontalLtrPingPong : function( state, dt )
 	    {
-	        if ( +1 === this._pingPongCurrentDirection )
-	        {
-	            this._currentXPos += ( dt * this.config.getSpeed() );
+	        const next = Object.assign( {}, state );
 
-	            if ( ( this._currentXPos + this.dimensions.visibleWidth ) > this.dimensions.totalScrollItemWidth )
+	        if ( +1 === state.pingPongCurrentDirection )
+	        {
+	            next.xPos = state.xPos + ( dt * state.speed );
+
+	            if ( ( next.xPos + state.visibleWidth ) > state.totalScrollItemWidth )
 	            {
-	                this._pingPongCurrentDirection = 0;
-	                this._pingPongNextDirection = -1;
+	                next.pingPongCurrentDirection = 0;
+	                next.pingPongNextDirection = -1;
 	            }
 	        }
-	        else if ( -1 === this._pingPongCurrentDirection )
+	        else if ( -1 === state.pingPongCurrentDirection )
 	        {
-	            this._currentXPos -= ( dt * this.config.getSpeed() );
+	            next.xPos = state.xPos - ( dt * state.speed );
 
-	            if ( this._currentXPos <= 0 )
+	            if ( next.xPos <= 0 )
 	            {
-	                this._pingPongCurrentDirection = 0;
-	                this._pingPongNextDirection = 1;
+	                next.pingPongCurrentDirection = 0;
+	                next.pingPongNextDirection = 1;
 	            }
 	        }
 	        else
 	        {
-	            this._pingPongPauseDelay -= dt;
-	            if ( this._pingPongPauseDelay < 0 )
+	            next.pingPongPauseDelay = state.pingPongPauseDelay - dt;
+	            if ( next.pingPongPauseDelay < 0 )
 	            {
-	                this._pingPongCurrentDirection = this._pingPongNextDirection;
-	                this._pingPongPauseDelay = this.config.pingPongDelay;
+	                next.pingPongCurrentDirection = state.pingPongNextDirection;
+	                next.pingPongPauseDelay = state.pingPongDelay;
 	            }
 	        }
 
-	        this.elems.innerContainer.style.transform = 'translate3d(-' + this._currentXPos + 'px,0,0)';
+	        return { state : next, transform : 'translate3d(-' + next.xPos + 'px,0,0)' };
 	    },
 
-	    fnHorizontalRtlPingPong : function( dt )
+	    fnHorizontalRtlPingPong : function( state, dt )
 	    {
-	        if ( +1 === this._pingPongCurrentDirection )
-	        {
-	            this._currentXPos -= ( dt * this.config.getSpeed() );
+	        const next = Object.assign( {}, state );
 
-	            if ( this._currentXPos < 0 )
+	        if ( +1 === state.pingPongCurrentDirection )
+	        {
+	            next.xPos = state.xPos - ( dt * state.speed );
+
+	            if ( next.xPos < 0 )
 	            {
-	                this._currentXPos = 0;
-	                this._pingPongCurrentDirection = 0;
-	                TickLogic._pingPongNextDirection = -1;
+	                next.xPos = 0;
+	                next.pingPongCurrentDirection = 0;
+	                next.pingPongNextDirection = -1;
 	            }
 	        }
-	        else if ( -1 === this._pingPongCurrentDirection )
+	        else if ( -1 === state.pingPongCurrentDirection )
 	        {
-	            this._currentXPos += ( dt * this.config.getSpeed() );
+	            next.xPos = state.xPos + ( dt * state.speed );
 
-	            if ( this._currentXPos > ( this.dimensions.totalScrollItemWidth - this.dimensions.visibleWidth ) )
+	            if ( next.xPos > ( state.totalScrollItemWidth - state.visibleWidth ) )
 	            {
-	                this._currentXPos = ( this.dimensions.totalScrollItemWidth - this.dimensions.visibleWidth );
-	                this._pingPongCurrentDirection = 0;
-	                this._pingPongNextDirection = 1;
+	                next.xPos = ( state.totalScrollItemWidth - state.visibleWidth );
+	                next.pingPongCurrentDirection = 0;
+	                next.pingPongNextDirection = 1;
 	            }
 	        }
 	        else
 	        {
-	            this._pingPongPauseDelay -= dt;
-	            if ( this._pingPongPauseDelay < 0 )
+	            next.pingPongPauseDelay = state.pingPongPauseDelay - dt;
+	            if ( next.pingPongPauseDelay < 0 )
 	            {
-	                this._pingPongCurrentDirection = this._pingPongNextDirection;
-	                this._pingPongPauseDelay = this.config.pingPongDelay;
+	                next.pingPongCurrentDirection = state.pingPongNextDirection;
+	                next.pingPongPauseDelay = state.pingPongDelay;
 	            }
 	        }
 
-	        this.elems.innerContainer.style.transform = 'translate3d(-' + this._currentXPos + 'px,0,0)';
+	        return { state : next, transform : 'translate3d(-' + next.xPos + 'px,0,0)' };
 	    },
 
-	    fnHorizontalTtbPingPong : function( dt )
+	    fnHorizontalTtbPingPong : function( state, dt )
 	    {
+	        const next = Object.assign( {}, state );
 
-	        if ( +1 === this._pingPongCurrentDirection )
+	        if ( +1 === state.pingPongCurrentDirection )
 	        {
-	            this._currentYPos -= ( dt * this.config.getSpeed() );
-	            if ( this._currentYPos < -(this.dimensions.totalScrollItemHeight - this.dimensions.visibleHeight) )
+	            next.yPos = state.yPos - ( dt * state.speed );
+	            if ( next.yPos < -( state.totalScrollItemHeight - state.visibleHeight ) )
 	            {
-	                this._currentYPos = -(this.dimensions.totalScrollItemHeight - this.dimensions.visibleHeight);
-	                this._pingPongCurrentDirection = 0;
-	                this._pingPongNextDirection = -1;
+	                next.yPos = -( state.totalScrollItemHeight - state.visibleHeight );
+	                next.pingPongCurrentDirection = 0;
+	                next.pingPongNextDirection = -1;
 	            }
 	        }
-	        else if ( -1 === this._pingPongCurrentDirection )
+	        else if ( -1 === state.pingPongCurrentDirection )
 	        {
-	            this._currentYPos += ( dt * this.config.getSpeed() );
-	            if ( this._currentYPos > 0 )
+	            next.yPos = state.yPos + ( dt * state.speed );
+	            if ( next.yPos > 0 )
 	            {
-	                this._currentYPos = 0;
-	                this._pingPongCurrentDirection = 0;
-	                this._pingPongNextDirection = 1;
+	                next.yPos = 0;
+	                next.pingPongCurrentDirection = 0;
+	                next.pingPongNextDirection = 1;
 	            }
 	        }
 	        else
 	        {
-	            this._pingPongPauseDelay -= dt;
-	            if ( this._pingPongPauseDelay < 0 )
+	            next.pingPongPauseDelay = state.pingPongPauseDelay - dt;
+	            if ( next.pingPongPauseDelay < 0 )
 	            {
-	                this._pingPongCurrentDirection = this._pingPongNextDirection;
-	                this._pingPongPauseDelay = this.config.pingPongDelay;
+	                next.pingPongCurrentDirection = state.pingPongNextDirection;
+	                next.pingPongPauseDelay = state.pingPongDelay;
 	            }
 	        }
 
-	        this.elems.innerContainer.style.transform = 'translate3d(0,' +  this._currentYPos + 'px, 0)';
+	        return { state : next, transform : 'translate3d(0,' + next.yPos + 'px, 0)' };
 	    },
 
-
-	    fnHorizontalBttPingPong : function( dt )
+	    fnHorizontalBttPingPong : function( state, dt )
 	    {
+	        const next = Object.assign( {}, state );
 
-	        if ( +1 === this._pingPongCurrentDirection )
+	        if ( +1 === state.pingPongCurrentDirection )
 	        {
-	            this._currentYPos += ( dt * this.config.getSpeed() );
-	            if ( this._currentYPos > 0 )
+	            next.yPos = state.yPos + ( dt * state.speed );
+	            if ( next.yPos > 0 )
 	            {
-	                this._currentYPos = 0;
-	                this._pingPongCurrentDirection = 0;
-	                this._pingPongNextDirection = -1;
+	                next.yPos = 0;
+	                next.pingPongCurrentDirection = 0;
+	                next.pingPongNextDirection = -1;
 	            }
 	        }
-	        else if ( -1 === this._pingPongCurrentDirection )
+	        else if ( -1 === state.pingPongCurrentDirection )
 	        {
-	            this._currentYPos -= ( dt * this.config.getSpeed() );
-	            if ( this._currentYPos < -(this.dimensions.totalScrollItemHeight - this.dimensions.visibleHeight) )
+	            next.yPos = state.yPos - ( dt * state.speed );
+	            if ( next.yPos < -( state.totalScrollItemHeight - state.visibleHeight ) )
 	            {
-	                this._currentYPos = -(this.dimensions.totalScrollItemHeight - this.dimensions.visibleHeight);
-	                this._pingPongCurrentDirection = 0;
-	                this._pingPongNextDirection = 1;
+	                next.yPos = -( state.totalScrollItemHeight - state.visibleHeight );
+	                next.pingPongCurrentDirection = 0;
+	                next.pingPongNextDirection = 1;
 	            }
 	        }
 	        else
 	        {
-	            this._pingPongPauseDelay -= dt;
-	            if ( this._pingPongPauseDelay < 0 )
+	            next.pingPongPauseDelay = state.pingPongPauseDelay - dt;
+	            if ( next.pingPongPauseDelay < 0 )
 	            {
-	                this._pingPongCurrentDirection = this._pingPongNextDirection;
-	                this._pingPongPauseDelay = this.config.pingPongDelay;
+	                next.pingPongCurrentDirection = state.pingPongNextDirection;
+	                next.pingPongPauseDelay = state.pingPongDelay;
 	            }
 	        }
 
-	        this.elems.innerContainer.style.transform = 'translate3d(0,' +  this._currentYPos + 'px, 0)';
+	        return { state : next, transform : 'translate3d(0,' + next.yPos + 'px, 0)' };
 	    },
 
 	    /**
 	     * Horizontal scroll logic, left to right
-	     * @param dt
 	     */
-	    fnHorizontalLtr : function( dt )
+	    fnHorizontalLtr : function( state, dt )
 	    {
-	        this._currentXPos += ( dt * this.config.getSpeed() );
+	        const next = Object.assign( {}, state );
 
-	        if ( this._currentXPos > this.dimensions.totalScrollItemWidth )
+	        next.xPos = state.xPos + ( dt * state.speed );
+
+	        if ( next.xPos > state.totalScrollItemWidth )
 	        {
-	            this._currentXPos = this.dimensions.totalScrollItemWidth - this._currentXPos;
+	            next.xPos = state.totalScrollItemWidth - next.xPos;
 	        }
-	        this.elems.innerContainer.style.transform = 'translate3d(-' + this._currentXPos + 'px,0,0)';
+
+	        return { state : next, transform : 'translate3d(-' + next.xPos + 'px,0,0)' };
 	    },
 
 	    /**
 	     * Horizontal scroll logic, right to left
-	     * @param dt
 	     */
-	    fnHorizontalRtl : function( dt )
+	    fnHorizontalRtl : function( state, dt )
 	    {
-	        this._currentXPos -= ( dt * this.config.getSpeed() );
+	        const next = Object.assign( {}, state );
 
-	        if ( this._currentXPos < this.dimensions.totalScrollItemWidth )
+	        next.xPos = state.xPos - ( dt * state.speed );
+
+	        if ( next.xPos < state.totalScrollItemWidth )
 	        {
-	            this._currentXPos = this.dimensions.totalScrollItemWidth + this._currentXPos;
+	            next.xPos = state.totalScrollItemWidth + next.xPos;
 	        }
-	        this.elems.innerContainer.style.transform = 'translate3d(-' + ( this._currentXPos -  this.dimensions.totalScrollItemWidth ) + 'px,0,0)';
+
+	        return { state : next, transform : 'translate3d(-' + ( next.xPos - state.totalScrollItemWidth ) + 'px,0,0)' };
 	    },
 
 	    /**
 	     * Vertical scroll logic, bottom to top
-	     * @param dt
 	     */
-	    fnVerticalBtt: function( dt )
+	    fnVerticalBtt : function( state, dt )
 	    {
-	        this._currentYPos += ( dt * this.config.getSpeed() );
+	        const next = Object.assign( {}, state );
 
-	        if ( this._currentYPos > this.dimensions.totalScrollItemHeight )
+	        next.yPos = state.yPos + ( dt * state.speed );
+
+	        if ( next.yPos > state.totalScrollItemHeight )
 	        {
-	            this._currentYPos = this.dimensions.totalScrollItemHeight - this._currentYPos;
+	            next.yPos = state.totalScrollItemHeight - next.yPos;
 	        }
-	        this.elems.innerContainer.style.transform = 'translate3d(0, -' + this._currentYPos + 'px,0)';
+
+	        return { state : next, transform : 'translate3d(0, -' + next.yPos + 'px,0)' };
 	    },
 
 	    /**
 	     * Vertical scroll logic, top to bottom
-	     * @param dt
 	     */
-	    fnVerticalTtb : function( dt )
+	    fnVerticalTtb : function( state, dt )
 	    {
-	        this._currentYPos -= ( dt * this.config.getSpeed() );
+	        const next = Object.assign( {}, state );
 
-	        if ( this._currentYPos < this.dimensions.totalScrollItemHeight )
+	        next.yPos = state.yPos - ( dt * state.speed );
+
+	        if ( next.yPos < state.totalScrollItemHeight )
 	        {
-	            this._currentYPos = this.dimensions.totalScrollItemHeight + this._currentYPos;
+	            next.yPos = state.totalScrollItemHeight + next.yPos;
 	        }
-	        this.elems.innerContainer.style.transform = 'translate3d(0, -' + ( this._currentYPos - this.dimensions.totalScrollItemHeight ) + 'px,0)';
+
+	        return { state : next, transform : 'translate3d(0, -' + ( next.yPos - state.totalScrollItemHeight ) + 'px,0)' };
 	    }
 	};
 
@@ -946,7 +976,7 @@
 	    const self = this,
 	          events = new Event( this );
 
-	    let fnTick = TickLogic.fnNoScroll.bind( this );
+	    let fnTick = TickLogic.fnNoScroll;
 	    this.elems = {
 	        rootElement : root,
 	        shadowRoot : null,
@@ -1242,7 +1272,7 @@
 	        {
 	            if ( false === self.config._gappedScrollingEnabled )
 	            {
-	                fnTick = TickLogic.fnNoScroll.bind( self );
+	                fnTick = TickLogic.fnNoScroll;
 	            }
 	            else
 	            {
@@ -1255,7 +1285,7 @@
 	                            this._pingPongCurrentDirection = 0;
 	                            this._pingPongNextDirection = -1;
 	                            this._pingPongPauseDelay = self.config.pingPongDelay;
-	                            fnTick = TickLogic.fnHorizontalRtlPingPong.bind( self );
+	                            fnTick = TickLogic.fnHorizontalRtlPingPong;
 	                        break;
 
 	                        default:
@@ -1264,7 +1294,7 @@
 	                            this._pingPongCurrentDirection = 0;
 	                            this._pingPongNextDirection = 1;
 	                            this._pingPongPauseDelay = self.config.pingPongDelay;
-	                            fnTick = TickLogic.fnHorizontalLtrPingPong.bind( self );
+	                            fnTick = TickLogic.fnHorizontalLtrPingPong;
 	                        break;
 	                    }
 	                }
@@ -1277,7 +1307,7 @@
 	                            this._pingPongCurrentDirection = 0;
 	                            this._pingPongNextDirection = -1;
 	                            this._pingPongPauseDelay = self.config.pingPongDelay;
-	                            fnTick = TickLogic.fnHorizontalTtbPingPong.bind( self );
+	                            fnTick = TickLogic.fnHorizontalTtbPingPong;
 	                        break;
 
 	                        case Configuration.DIRECTION_BTT:
@@ -1285,7 +1315,7 @@
 	                            this._pingPongCurrentDirection = 0;
 	                            this._pingPongNextDirection = -1;
 	                            this._pingPongPauseDelay = self.config.pingPongDelay;
-	                            fnTick = TickLogic.fnHorizontalBttPingPong.bind( self );
+	                            fnTick = TickLogic.fnHorizontalBttPingPong;
 	                        break;
 	                    }
 	                }
@@ -1299,12 +1329,12 @@
 	                switch ( self.config.direction )
 	                {
 	                    case Configuration.DIRECTION_RTL:
-	                        fnTick = TickLogic.fnHorizontalRtl.bind( self );
+	                        fnTick = TickLogic.fnHorizontalRtl;
 	                        break;
 
 	                    default:
 	                    case Configuration.DIRECTION_LTR:
-	                        fnTick = TickLogic.fnHorizontalLtr.bind( self );
+	                        fnTick = TickLogic.fnHorizontalLtr;
 	                        break;
 	                }
 	            }
@@ -1313,15 +1343,46 @@
 	                switch ( self.config.direction )
 	                {
 	                    case Configuration.DIRECTION_TTB:
-	                        fnTick = TickLogic.fnVerticalTtb.bind( self );
+	                        fnTick = TickLogic.fnVerticalTtb;
 	                        break;
 
 	                    default:
 	                    case Configuration.DIRECTION_BTT:
-	                        fnTick = TickLogic.fnVerticalBtt.bind( self );
+	                        fnTick = TickLogic.fnVerticalBtt;
 	                        break;
 	                }
 	            }
+	        }
+	    }.bind( this );
+
+	    this.getTickState = function()
+	    {
+	        return {
+	            xPos : this._currentXPos,
+	            yPos : this._currentYPos,
+	            speed : this.config.getSpeed(),
+	            pingPongCurrentDirection : this._pingPongCurrentDirection,
+	            pingPongNextDirection : this._pingPongNextDirection,
+	            pingPongPauseDelay : this._pingPongPauseDelay,
+	            pingPongDelay : this.config.pingPongDelay,
+	            visibleWidth : this.dimensions.visibleWidth,
+	            visibleHeight : this.dimensions.visibleHeight,
+	            totalScrollItemWidth : this.dimensions.totalScrollItemWidth,
+	            totalScrollItemHeight : this.dimensions.totalScrollItemHeight
+	        };
+	    }.bind( this );
+
+	    this.applyTickResult = function( result )
+	    {
+	        this._currentXPos = result.state.xPos;
+	        this._currentYPos = result.state.yPos;
+	        this._pingPongCurrentDirection = result.state.pingPongCurrentDirection;
+	        this._pingPongNextDirection = result.state.pingPongNextDirection;
+	        this._pingPongPauseDelay = result.state.pingPongPauseDelay;
+
+	        if ( null !== result.transform )
+	        {
+	            this.elems.innerContainer.style.transform = result.transform;
 	        }
 	    }.bind( this );
 
@@ -1342,7 +1403,7 @@
 
 	        if ( this._shouldPlay )
 	        {
-	            fnTick( deltaTime );
+	            this.applyTickResult( fnTick( this.getTickState(), deltaTime ) );
 	        }
 
 	        this._rafId = window.requestAnimationFrame( this.tick );
