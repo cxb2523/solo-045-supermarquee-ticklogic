@@ -5,7 +5,8 @@
   "type" : "module",
   "main": "src/core/SuperMarquee.js",
   "scripts": {
-    "build": "rollup -c"
+    "build": "rollup -c",
+    "test": "node --test test/ticklogic.test.js"
   },
   "repository": {
     "type": "git",

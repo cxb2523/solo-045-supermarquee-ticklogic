@@ -1,219 +1,341 @@
+/**
+ * Pure per-frame scroll logic.
+ *
+ * Each function receives an immutable state snapshot and a time slice (dt in ms)
+ * and returns the next state together with the container offset:
+ *
+ *   fn( state, dt ) -> { state: <next state>, offset: { x, y } }
+ *
+ * State snapshot:
+ *   {
+ *       xPos, yPos,                     // current scroll positions
+ *       pingPongCurrentDirection,       // +1, -1 or 0 (paused)
+ *       pingPongNextDirection,          // direction after the pause
+ *       pingPongPauseDelay,             // remaining pause time in ms
+ *       speed,                          // target speed in px/ms
+ *       currentSpeed,                   // eased speed in px/ms
+ *       easing,                         // easing enabled flag
+ *       easingValue,                    // easing factor
+ *       pingPongDelay,                  // pause duration at boundaries in ms
+ *       dimensions : {
+ *           visibleWidth, visibleHeight,
+ *           totalScrollItemWidth, totalScrollItemHeight
+ *       }
+ *   }
+ *
+ * The functions never read instance fields and never touch the DOM;
+ * the caller applies the returned state and offset.
+ */
+
+/**
+ * Resolves the effective speed for this tick, easing the current
+ * speed towards the target speed if easing is enabled.
+ * @param state
+ * @returns {{speed: number, currentSpeed: number}}
+ */
+function resolveSpeed( state )
+{
+    if ( true === state.easing && 1 > state.easingValue )
+    {
+        const currentSpeed = ( 1 - state.easingValue ) * state.currentSpeed + state.easingValue * state.speed;
+        return { speed : currentSpeed, currentSpeed : currentSpeed };
+    }
+    return { speed : state.speed, currentSpeed : state.currentSpeed };
+}
+
+/**
+ * Creates a mutable working copy of the given state snapshot.
+ * @param state
+ * @returns {object}
+ */
+function copyState( state )
+{
+    return Object.assign( {}, state );
+}
+
 const TickLogic = {
 
-    fnNoScroll : function( dt )
+    fnNoScroll : function( state, dt )
     {
         // Nothing to do
+        return {
+            state : copyState( state ),
+            offset : { x : 0, y : 0 }
+        };
     },
 
-    /*
-    // Gets set during ticker initialisation
-    _pingPongCurrentDirection : null,
-    _pingPongNextDirection : null,
-    _pingPongPauseDelay : null,
-*/
-    fnHorizontalLtrPingPong : function( dt )
+    fnHorizontalLtrPingPong : function( state, dt )
     {
-        if ( +1 === this._pingPongCurrentDirection )
-        {
-            this._currentXPos += ( dt * this.config.getSpeed() );
+        const next = copyState( state ),
+              resolved = resolveSpeed( state ),
+              speed = resolved.speed;
+        next.currentSpeed = resolved.currentSpeed;
 
-            if ( ( this._currentXPos + this.dimensions.visibleWidth ) > this.dimensions.totalScrollItemWidth )
+        if ( +1 === next.pingPongCurrentDirection )
+        {
+            next.xPos += ( dt * speed );
+
+            if ( ( next.xPos + next.dimensions.visibleWidth ) > next.dimensions.totalScrollItemWidth )
             {
-                this._pingPongCurrentDirection = 0;
-                this._pingPongNextDirection = -1;
+                next.pingPongCurrentDirection = 0;
+                next.pingPongNextDirection = -1;
             }
         }
-        else if ( -1 === this._pingPongCurrentDirection )
+        else if ( -1 === next.pingPongCurrentDirection )
         {
-            this._currentXPos -= ( dt * this.config.getSpeed() );
+            next.xPos -= ( dt * speed );
 
-            if ( this._currentXPos <= 0 )
+            if ( next.xPos <= 0 )
             {
-                this._pingPongCurrentDirection = 0;
-                this._pingPongNextDirection = 1;
+                next.pingPongCurrentDirection = 0;
+                next.pingPongNextDirection = 1;
             }
         }
         else
         {
-            this._pingPongPauseDelay -= dt;
-            if ( this._pingPongPauseDelay < 0 )
+            next.pingPongPauseDelay -= dt;
+            if ( next.pingPongPauseDelay < 0 )
             {
-                this._pingPongCurrentDirection = this._pingPongNextDirection;
-                this._pingPongPauseDelay = this.config.pingPongDelay;
+                next.pingPongCurrentDirection = next.pingPongNextDirection;
+                next.pingPongPauseDelay = next.pingPongDelay;
             }
         }
 
-        this.elems.innerContainer.style.transform = 'translate3d(-' + this._currentXPos + 'px,0,0)';
+        return {
+            state : next,
+            offset : { x : -next.xPos, y : 0 }
+        };
     },
 
-    fnHorizontalRtlPingPong : function( dt )
+    fnHorizontalRtlPingPong : function( state, dt )
     {
-        if ( +1 === this._pingPongCurrentDirection )
-        {
-            this._currentXPos -= ( dt * this.config.getSpeed() );
+        const next = copyState( state ),
+              resolved = resolveSpeed( state ),
+              speed = resolved.speed;
+        next.currentSpeed = resolved.currentSpeed;
 
-            if ( this._currentXPos < 0 )
+        if ( +1 === next.pingPongCurrentDirection )
+        {
+            next.xPos -= ( dt * speed );
+
+            if ( next.xPos < 0 )
             {
-                this._currentXPos = 0;
-                this._pingPongCurrentDirection = 0;
-                TickLogic._pingPongNextDirection = -1;
+                next.xPos = 0;
+                next.pingPongCurrentDirection = 0;
+                next.pingPongNextDirection = -1;
             }
         }
-        else if ( -1 === this._pingPongCurrentDirection )
+        else if ( -1 === next.pingPongCurrentDirection )
         {
-            this._currentXPos += ( dt * this.config.getSpeed() );
+            next.xPos += ( dt * speed );
 
-            if ( this._currentXPos > ( this.dimensions.totalScrollItemWidth - this.dimensions.visibleWidth ) )
+            if ( next.xPos > ( next.dimensions.totalScrollItemWidth - next.dimensions.visibleWidth ) )
             {
-                this._currentXPos = ( this.dimensions.totalScrollItemWidth - this.dimensions.visibleWidth );
-                this._pingPongCurrentDirection = 0;
-                this._pingPongNextDirection = 1;
+                next.xPos = ( next.dimensions.totalScrollItemWidth - next.dimensions.visibleWidth );
+                next.pingPongCurrentDirection = 0;
+                next.pingPongNextDirection = 1;
             }
         }
         else
         {
-            this._pingPongPauseDelay -= dt;
-            if ( this._pingPongPauseDelay < 0 )
+            next.pingPongPauseDelay -= dt;
+            if ( next.pingPongPauseDelay < 0 )
             {
-                this._pingPongCurrentDirection = this._pingPongNextDirection;
-                this._pingPongPauseDelay = this.config.pingPongDelay;
+                next.pingPongCurrentDirection = next.pingPongNextDirection;
+                next.pingPongPauseDelay = next.pingPongDelay;
             }
         }
 
-        this.elems.innerContainer.style.transform = 'translate3d(-' + this._currentXPos + 'px,0,0)';
+        return {
+            state : next,
+            offset : { x : -next.xPos, y : 0 }
+        };
     },
 
-    fnHorizontalTtbPingPong : function( dt )
+    fnHorizontalTtbPingPong : function( state, dt )
     {
+        const next = copyState( state ),
+              resolved = resolveSpeed( state ),
+              speed = resolved.speed;
+        next.currentSpeed = resolved.currentSpeed;
 
-        if ( +1 === this._pingPongCurrentDirection )
+        if ( +1 === next.pingPongCurrentDirection )
         {
-            this._currentYPos -= ( dt * this.config.getSpeed() );
-            if ( this._currentYPos < -(this.dimensions.totalScrollItemHeight - this.dimensions.visibleHeight) )
+            next.yPos -= ( dt * speed );
+            if ( next.yPos < -(next.dimensions.totalScrollItemHeight - next.dimensions.visibleHeight) )
             {
-                this._currentYPos = -(this.dimensions.totalScrollItemHeight - this.dimensions.visibleHeight);
-                this._pingPongCurrentDirection = 0;
-                this._pingPongNextDirection = -1;
+                next.yPos = -(next.dimensions.totalScrollItemHeight - next.dimensions.visibleHeight);
+                next.pingPongCurrentDirection = 0;
+                next.pingPongNextDirection = -1;
             }
         }
-        else if ( -1 === this._pingPongCurrentDirection )
+        else if ( -1 === next.pingPongCurrentDirection )
         {
-            this._currentYPos += ( dt * this.config.getSpeed() );
-            if ( this._currentYPos > 0 )
+            next.yPos += ( dt * speed );
+            if ( next.yPos > 0 )
             {
-                this._currentYPos = 0;
-                this._pingPongCurrentDirection = 0;
-                this._pingPongNextDirection = 1;
+                next.yPos = 0;
+                next.pingPongCurrentDirection = 0;
+                next.pingPongNextDirection = 1;
             }
         }
         else
         {
-            this._pingPongPauseDelay -= dt;
-            if ( this._pingPongPauseDelay < 0 )
+            next.pingPongPauseDelay -= dt;
+            if ( next.pingPongPauseDelay < 0 )
             {
-                this._pingPongCurrentDirection = this._pingPongNextDirection;
-                this._pingPongPauseDelay = this.config.pingPongDelay;
+                next.pingPongCurrentDirection = next.pingPongNextDirection;
+                next.pingPongPauseDelay = next.pingPongDelay;
             }
         }
 
-        this.elems.innerContainer.style.transform = 'translate3d(0,' +  this._currentYPos + 'px, 0)';
+        return {
+            state : next,
+            offset : { x : 0, y : next.yPos }
+        };
     },
 
-
-    fnHorizontalBttPingPong : function( dt )
+    fnHorizontalBttPingPong : function( state, dt )
     {
+        const next = copyState( state ),
+              resolved = resolveSpeed( state ),
+              speed = resolved.speed;
+        next.currentSpeed = resolved.currentSpeed;
 
-        if ( +1 === this._pingPongCurrentDirection )
+        if ( +1 === next.pingPongCurrentDirection )
         {
-            this._currentYPos += ( dt * this.config.getSpeed() );
-            if ( this._currentYPos > 0 )
+            next.yPos += ( dt * speed );
+            if ( next.yPos > 0 )
             {
-                this._currentYPos = 0;
-                this._pingPongCurrentDirection = 0;
-                this._pingPongNextDirection = -1;
+                next.yPos = 0;
+                next.pingPongCurrentDirection = 0;
+                next.pingPongNextDirection = -1;
             }
         }
-        else if ( -1 === this._pingPongCurrentDirection )
+        else if ( -1 === next.pingPongCurrentDirection )
         {
-            this._currentYPos -= ( dt * this.config.getSpeed() );
-            if ( this._currentYPos < -(this.dimensions.totalScrollItemHeight - this.dimensions.visibleHeight) )
+            next.yPos -= ( dt * speed );
+            if ( next.yPos < -(next.dimensions.totalScrollItemHeight - next.dimensions.visibleHeight) )
             {
-                this._currentYPos = -(this.dimensions.totalScrollItemHeight - this.dimensions.visibleHeight);
-                this._pingPongCurrentDirection = 0;
-                this._pingPongNextDirection = 1;
+                next.yPos = -(next.dimensions.totalScrollItemHeight - next.dimensions.visibleHeight);
+                next.pingPongCurrentDirection = 0;
+                next.pingPongNextDirection = 1;
             }
         }
         else
         {
-            this._pingPongPauseDelay -= dt;
-            if ( this._pingPongPauseDelay < 0 )
+            next.pingPongPauseDelay -= dt;
+            if ( next.pingPongPauseDelay < 0 )
             {
-                this._pingPongCurrentDirection = this._pingPongNextDirection;
-                this._pingPongPauseDelay = this.config.pingPongDelay;
+                next.pingPongCurrentDirection = next.pingPongNextDirection;
+                next.pingPongPauseDelay = next.pingPongDelay;
             }
         }
 
-        this.elems.innerContainer.style.transform = 'translate3d(0,' +  this._currentYPos + 'px, 0)';
+        return {
+            state : next,
+            offset : { x : 0, y : next.yPos }
+        };
     },
 
     /**
      * Horizontal scroll logic, left to right
+     * @param state
      * @param dt
      */
-    fnHorizontalLtr : function( dt )
+    fnHorizontalLtr : function( state, dt )
     {
-        this._currentXPos += ( dt * this.config.getSpeed() );
+        const next = copyState( state ),
+              resolved = resolveSpeed( state ),
+              speed = resolved.speed;
+        next.currentSpeed = resolved.currentSpeed;
 
-        if ( this._currentXPos > this.dimensions.totalScrollItemWidth )
+        next.xPos += ( dt * speed );
+
+        if ( next.xPos > next.dimensions.totalScrollItemWidth )
         {
-            this._currentXPos = this.dimensions.totalScrollItemWidth - this._currentXPos;
+            next.xPos = next.dimensions.totalScrollItemWidth - next.xPos;
         }
-        this.elems.innerContainer.style.transform = 'translate3d(-' + this._currentXPos + 'px,0,0)';
+
+        return {
+            state : next,
+            offset : { x : -next.xPos, y : 0 }
+        };
     },
 
     /**
      * Horizontal scroll logic, right to left
+     * @param state
      * @param dt
      */
-    fnHorizontalRtl : function( dt )
+    fnHorizontalRtl : function( state, dt )
     {
-        this._currentXPos -= ( dt * this.config.getSpeed() );
+        const next = copyState( state ),
+              resolved = resolveSpeed( state ),
+              speed = resolved.speed;
+        next.currentSpeed = resolved.currentSpeed;
 
-        if ( this._currentXPos < this.dimensions.totalScrollItemWidth )
+        next.xPos -= ( dt * speed );
+
+        if ( next.xPos < next.dimensions.totalScrollItemWidth )
         {
-            this._currentXPos = this.dimensions.totalScrollItemWidth + this._currentXPos;
+            next.xPos = next.dimensions.totalScrollItemWidth + next.xPos;
         }
-        this.elems.innerContainer.style.transform = 'translate3d(-' + ( this._currentXPos -  this.dimensions.totalScrollItemWidth ) + 'px,0,0)';
+
+        return {
+            state : next,
+            offset : { x : -( next.xPos - next.dimensions.totalScrollItemWidth ), y : 0 }
+        };
     },
 
     /**
      * Vertical scroll logic, bottom to top
+     * @param state
      * @param dt
      */
-    fnVerticalBtt: function( dt )
+    fnVerticalBtt : function( state, dt )
     {
-        this._currentYPos += ( dt * this.config.getSpeed() );
+        const next = copyState( state ),
+              resolved = resolveSpeed( state ),
+              speed = resolved.speed;
+        next.currentSpeed = resolved.currentSpeed;
 
-        if ( this._currentYPos > this.dimensions.totalScrollItemHeight )
+        next.yPos += ( dt * speed );
+
+        if ( next.yPos > next.dimensions.totalScrollItemHeight )
         {
-            this._currentYPos = this.dimensions.totalScrollItemHeight - this._currentYPos;
+            next.yPos = next.dimensions.totalScrollItemHeight - next.yPos;
         }
-        this.elems.innerContainer.style.transform = 'translate3d(0, -' + this._currentYPos + 'px,0)';
+
+        return {
+            state : next,
+            offset : { x : 0, y : -next.yPos }
+        };
     },
 
     /**
      * Vertical scroll logic, top to bottom
+     * @param state
      * @param dt
      */
-    fnVerticalTtb : function( dt )
+    fnVerticalTtb : function( state, dt )
     {
-        this._currentYPos -= ( dt * this.config.getSpeed() );
+        const next = copyState( state ),
+              resolved = resolveSpeed( state ),
+              speed = resolved.speed;
+        next.currentSpeed = resolved.currentSpeed;
 
-        if ( this._currentYPos < this.dimensions.totalScrollItemHeight )
+        next.yPos -= ( dt * speed );
+
+        if ( next.yPos < next.dimensions.totalScrollItemHeight )
         {
-            this._currentYPos = this.dimensions.totalScrollItemHeight + this._currentYPos;
+            next.yPos = next.dimensions.totalScrollItemHeight + next.yPos;
         }
-        this.elems.innerContainer.style.transform = 'translate3d(0, -' + ( this._currentYPos - this.dimensions.totalScrollItemHeight ) + 'px,0)';
+
+        return {
+            state : next,
+            offset : { x : 0, y : -( next.yPos - next.dimensions.totalScrollItemHeight ) }
+        };
     }
 };
 

@@ -12,7 +12,7 @@ function Core( root, config )
     const self = this,
           events = new Event( this );
 
-    let fnTick = TickLogic.fnNoScroll.bind( this );
+    let fnTick = TickLogic.fnNoScroll;
     this.elems = {
         rootElement : root,
         shadowRoot : null,
@@ -31,6 +31,7 @@ function Core( root, config )
     this._shouldPlay = false;
     this._wasPlaying = false;
     this._isInView = true;
+    this._currentSpeed = this.config._currentSpeed;
 
     this._previousDimensions = { width: this.elems.rootElement.offsetWidth, height: this.elems.rootElement.offsetHeight };
 
@@ -308,7 +309,7 @@ function Core( root, config )
         {
             if ( false === self.config._gappedScrollingEnabled )
             {
-                fnTick = TickLogic.fnNoScroll.bind( self );
+                fnTick = TickLogic.fnNoScroll;
             }
             else
             {
@@ -321,7 +322,7 @@ function Core( root, config )
                             this._pingPongCurrentDirection = 0;
                             this._pingPongNextDirection = -1;
                             this._pingPongPauseDelay = self.config.pingPongDelay;
-                            fnTick = TickLogic.fnHorizontalRtlPingPong.bind( self );
+                            fnTick = TickLogic.fnHorizontalRtlPingPong;
                         break;
 
                         default:
@@ -330,7 +331,7 @@ function Core( root, config )
                             this._pingPongCurrentDirection = 0;
                             this._pingPongNextDirection = 1;
                             this._pingPongPauseDelay = self.config.pingPongDelay;
-                            fnTick = TickLogic.fnHorizontalLtrPingPong.bind( self );
+                            fnTick = TickLogic.fnHorizontalLtrPingPong;
                         break;
                     }
                 }
@@ -343,7 +344,7 @@ function Core( root, config )
                             this._pingPongCurrentDirection = 0;
                             this._pingPongNextDirection = -1;
                             this._pingPongPauseDelay = self.config.pingPongDelay;
-                            fnTick = TickLogic.fnHorizontalTtbPingPong.bind( self );
+                            fnTick = TickLogic.fnHorizontalTtbPingPong;
                         break;
 
                         case Configuration.DIRECTION_BTT:
@@ -351,7 +352,7 @@ function Core( root, config )
                             this._pingPongCurrentDirection = 0;
                             this._pingPongNextDirection = -1;
                             this._pingPongPauseDelay = self.config.pingPongDelay;
-                            fnTick = TickLogic.fnHorizontalBttPingPong.bind( self );
+                            fnTick = TickLogic.fnHorizontalBttPingPong;
                         break;
                     }
                 }
@@ -365,12 +366,12 @@ function Core( root, config )
                 switch ( self.config.direction )
                 {
                     case Configuration.DIRECTION_RTL:
-                        fnTick = TickLogic.fnHorizontalRtl.bind( self );
+                        fnTick = TickLogic.fnHorizontalRtl;
                         break;
 
                     default:
                     case Configuration.DIRECTION_LTR:
-                        fnTick = TickLogic.fnHorizontalLtr.bind( self );
+                        fnTick = TickLogic.fnHorizontalLtr;
                         break;
                 }
             }
@@ -379,12 +380,12 @@ function Core( root, config )
                 switch ( self.config.direction )
                 {
                     case Configuration.DIRECTION_TTB:
-                        fnTick = TickLogic.fnVerticalTtb.bind( self );
+                        fnTick = TickLogic.fnVerticalTtb;
                         break;
 
                     default:
                     case Configuration.DIRECTION_BTT:
-                        fnTick = TickLogic.fnVerticalBtt.bind( self );
+                        fnTick = TickLogic.fnVerticalBtt;
                         break;
                 }
             }
@@ -408,11 +409,45 @@ function Core( root, config )
 
         if ( this._shouldPlay )
         {
-            fnTick( deltaTime );
+            this.applyTickResult( fnTick( this.getTickState(), deltaTime ) );
         }
 
         this._rafId = window.requestAnimationFrame( this.tick );
     }.bind ( this );
+
+    this.getTickState = function()
+    {
+        return {
+            xPos : this._currentXPos,
+            yPos : this._currentYPos,
+            pingPongCurrentDirection : this._pingPongCurrentDirection,
+            pingPongNextDirection : this._pingPongNextDirection,
+            pingPongPauseDelay : this._pingPongPauseDelay,
+            speed : +this.config.speed,
+            currentSpeed : this._currentSpeed,
+            easing : this.config.easing,
+            easingValue : this.config.easingValue,
+            pingPongDelay : this.config.pingPongDelay,
+            dimensions : {
+                visibleWidth : this.dimensions.visibleWidth,
+                visibleHeight : this.dimensions.visibleHeight,
+                totalScrollItemWidth : this.dimensions.totalScrollItemWidth,
+                totalScrollItemHeight : this.dimensions.totalScrollItemHeight
+            }
+        };
+    }.bind( this );
+
+    this.applyTickResult = function( tickResult )
+    {
+        const state = tickResult.state;
+        this._currentXPos = state.xPos;
+        this._currentYPos = state.yPos;
+        this._pingPongCurrentDirection = state.pingPongCurrentDirection;
+        this._pingPongNextDirection = state.pingPongNextDirection;
+        this._pingPongPauseDelay = state.pingPongPauseDelay;
+        this._currentSpeed = state.currentSpeed;
+        this.elems.innerContainer.style.transform = 'translate3d(' + tickResult.offset.x + 'px,' + tickResult.offset.y + 'px,0)';
+    }.bind( this );
 
     this.getRootElement = function()
     {
